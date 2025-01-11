@@ -53,65 +53,109 @@ export default function App() {
 
   useEffect(() => {
     // Start processing from the root folder
-    fetchFolderContents(FOLDER_ID);
+    setFiles([]);
+    const loadFolderContents = async () => {
+      await fetchFolderContents(FOLDER_ID);
+    };
+    loadFolderContents();
   }, []);
 
-  const fetchFolderContents = async (folderId) => {
-    const url = `${BASE_URL}?q='${folderId}'+in+parents&key=${API_KEY}`;
+  const fetchFolderContents = async (parentFolderId) => {
+    const url = `${BASE_URL}?q='${parentFolderId}'+in+parents&key=${API_KEY}`;
     try {
       const response = await fetch(url);
       const data = await response.json();
+  
       if (data.files) {
-        const processedFiles = await Promise.all(
-          data.files.map(async (file) => {
-            if (file.mimeType === 'application/vnd.google-apps.folder') {
-              // Recursive call for subfolder
-              return fetchFolderContents(file.id);
-            } else if (file.mimeType === 'text/plain') {
-              // Fetch content of the text file
-              const textContent = await fetchFileContent(file.id);
-              return { ...file, content: textContent };
-            } else if (file.mimeType.startsWith('image/')) {
-              // Handle image file
-              return file; // Images can be used directly
-            } else {
-              return null; // Skip other file types
+        const folderData = await Promise.all(
+          data.files.map(async (folder) => {
+            if (folder.mimeType === "application/vnd.google-apps.folder") {
+              const innerFolderContents = await fetchInnerFolderContents(folder.id);
+              return {
+                name: folder.name,
+                ...innerFolderContents,
+              };
             }
           })
         );
-        setFiles((prevFiles) => [...prevFiles, ...processedFiles.filter(Boolean)]);
+  
+        const filteredData = folderData.filter(Boolean); // Remove undefined entries
+        setFiles((prevFiles) => [...prevFiles, ...filteredData]); // Update the state
+      } else {
+        console.error("No files found in the folder.");
       }
     } catch (error) {
-      console.error('Error fetching folder contents:', error);
+      console.error("Error fetching folder contents:", error);
     }
   };
-
-  const fetchFileContent = async (fileId) => {
-    const url = `${BASE_URL}/${fileId}?alt=media&key=${API_KEY}`;
+  
+  const fetchInnerFolderContents = async (innerFolderId) => {
+    const url = `${BASE_URL}?q='${innerFolderId}'+in+parents&key=${API_KEY}`;
     try {
       const response = await fetch(url);
-      const text = await response.text();
-      const lines = text.split('\n').slice(0, 2); // Get the first and second line
-      return lines.join('\n');
+      const data = await response.json();
+  
+      let imageId = "";
+      let humidity = "";
+      let moisture = "";
+  
+      if (data.files) {
+        for (const file of data.files) {
+          if (file.mimeType.startsWith("image/")) {
+            imageId = file.id;
+          } else if (file.mimeType === "text/plain") {
+            const fileContent = await fetchFileContent(file.id);
+            const lines = fileContent.split("\n");
+            humidity = lines[0] || ""; // First line
+            moisture = lines[1] || ""; // Second line
+          }
+        }
+      }
+  
+      return {
+        image: imageId,
+        humidity,
+        moisture,
+      };
     } catch (error) {
-      console.error('Error fetching file content:', error);
-      return '';
+      console.error("Error fetching inner folder contents:", error);
+      return {};
     }
   };
-
+  
+  const fetchFileContent = async (fileId) => {
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${API_KEY}`;
+    try {
+      const response = await fetch(url);
+  
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file content: ${response.statusText}`);
+      }
+  
+      const textContent = await response.text();
+      return textContent;
+    } catch (error) {
+      console.error("Error fetching file content:", error);
+      throw error;
+    }
+  };
   
 
   const handleRefresh = () => {
     // Refresh logic
     Alert.alert('Refresh clicked!');
-      fetchFolderContents(FOLDER_ID);
-    crops.map((item) => {
-      //Call Sanjana's APi to get soil moisture, humidity etc of each plant
+    setFiles([]);
+    const loadFolderContents = async () => {
+      await fetchFolderContents(FOLDER_ID);
+    };
+    loadFolderContents();
+    // crops.map((item) => {
+    //   //Call Sanjana's APi to get soil moisture, humidity etc of each plant
 
-      // Sanjana's API will also get you an image of the particular crop. 
-      //Send this image and get the PLant details from the identification APi 
-      sendImageToAPI(item.imageBase64);
-    });
+    //   // Sanjana's API will also get you an image of the particular crop. 
+    //   //Send this image and get the PLant details from the identification APi 
+    //   sendImageToAPI(item.imageBase64);
+    // });
     // You can add any refresh logic you want here, like resetting state or fetching new data
   };
 
@@ -343,32 +387,18 @@ export default function App() {
         </View>
       <SafeAreaView style={styles.container}>
         <ScrollView>
-           {files.map((file, index) => (
-            <View key={index} style={{ margin: 10 }}>
-              {file.mimeType.startsWith('image/') && (
-                <Image
-                  source={{ uri: `${BASE_URL}/${file.id}?alt=media&key=${API_KEY}` }}
-                  style={{ width: 100, height: 100 }}
-                />
-              )}
-              {file.mimeType === 'text/plain' && (
-                <Text>{file.content || 'No content available'}</Text>
-              )}
-            </View>
+          
+          {files.map((file, index) => (
+            <TouchableOpacity key={index} onPress={() => handleCardPress(index)} style={[styles.card, { backgroundColor: "red" }]}>
+            <Image source={{ uri: `${BASE_URL}/${file.image}?alt=media&key=${API_KEY}` }} style={styles.image} />
+            <Text style={styles.title}>{file.name}</Text>
+            <Text style={styles.description}>Moisture: {file.moisture || 'No content available'}</Text>
+            <Text style={styles.description}>Humidity: {file.humidity || 'No content available'}</Text>      
+            <Text style={styles.description}>Aye hello</Text>
+            </TouchableOpacity>
           ))}
-          {crops.map((item, index) => (
-            <Card
-              key={index}
-              id={item.id}
-              title={item.plantname}
-              backgroundColor={item.status}
-              moisture={item.moisture}
-              humidity={item.humidity}
-              description="A healthy and tasty salad with fresh vegetables."
-              imageUrl="https://via.placeholder.com/150"
-              onPress={handleCardPress}
-            />
-          ))}
+          
+        
 
           <Button title="Capture Image" onPress={pickImage} />
           {image && <Image source={{ uri: image }} style={styles.image} />}
@@ -456,11 +486,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 30,
   },
-  image: {
-    width: 300,
-    height: 300,
-    marginVertical: 10,
-  },
   response: {
     marginTop: 10,
     textAlign: 'center',
@@ -513,6 +538,32 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    marginVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    minWidth: "100%" 
+  },
+  image: {
+    width: '100%',
+    height: 150,
+    borderRadius: 10,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginVertical: 8,
+  },
+  description: {
+    fontSize: 14,
+    color: '#00000',
   },
 });
 
