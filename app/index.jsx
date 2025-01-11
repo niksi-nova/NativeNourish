@@ -53,7 +53,6 @@ export default function App() {
 
   useEffect(() => {
     // Start processing from the root folder
-    setFiles([]);
     const loadFolderContents = async () => {
       await fetchFolderContents(FOLDER_ID);
     };
@@ -80,6 +79,8 @@ export default function App() {
         );
   
         const filteredData = folderData.filter(Boolean); // Remove undefined entries
+        
+        setFiles([]);
         setFiles((prevFiles) => [...prevFiles, ...filteredData]); // Update the state
       } else {
         console.error("No files found in the folder.");
@@ -144,7 +145,6 @@ export default function App() {
   const handleRefresh = () => {
     // Refresh logic
     Alert.alert('Refresh clicked!');
-    setFiles([]);
     const loadFolderContents = async () => {
       await fetchFolderContents(FOLDER_ID);
     };
